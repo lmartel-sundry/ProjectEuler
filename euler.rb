@@ -1,0 +1,440 @@
+# BEGIN HELPERS
+
+Inf = 1.0/0.0
+
+def border(len)
+  (1..len).map{ "=" }.join
+end
+
+# From http://www.michaelharrison.ws/weblog/?p=163
+class Enumerator 
+  def lazy_select(&block) 
+    Enumerator.new do |yielder| 
+      self.each do |val| 
+        yielder.yield(val) if block.call(val) 
+      end 
+    end 
+  end 
+
+  def lazy_map(&block) 
+    Enumerator.new do |yielder| 
+      self.each do |value| 
+        yielder.yield(block.call(value)) 
+      end 
+    end 
+  end
+end
+
+class Sieve < Enumerator
+  def initialize(upper_bound=Inf)
+    super() do |yielder|
+      composites = {}
+      (2..upper_bound).each do |x|
+        if composites.include? x
+          composites[x].each do |root_prime|
+            (composites[x + root_prime] ||= []) << root_prime
+          end
+          composites.delete x
+        else
+          yielder.yield x
+          composites[x**2] = [x]
+        end
+      end
+    end
+  end
+end
+
+module Enumerable
+  def sum
+    reduce(:+)
+  end
+
+  def multiply
+    reduce(1, :*)
+  end
+end
+
+class String
+  def palindrome?
+    reverse == self
+  end
+end
+
+class Integer
+  def round_down_to_multiple_of(base)
+    self / base * base
+  end
+
+  def factorial
+    case 
+    when self < 0
+      nil
+    when self == 0
+      0
+    else
+      (1..self).multiply
+    end
+  end
+
+  # This uses Fermat's method, which is not always efficient.
+  def prime_factors
+    n = self
+    factors = Hash.new(0)
+
+    # Pull out twos manually
+    while n % 2 == 0 do
+      factors[2] += 1
+      n /= 2
+    end
+
+    # Then use Fermat's method
+    a = Math.sqrt(n).ceil
+    b2 = a**2 - n
+    until (b2**0.5).round**2 == b2 do
+      a += 1
+      b2 = a**2 - n
+    end
+
+    candidates = [(a - Math.sqrt(b2)).round, (a + Math.sqrt(b2)).round]
+    candidates.each do |candidate|
+      next if candidate == 1
+      if candidate == n
+        factors[n] += 1
+      else
+        candidate_factors = candidate.prime_factors
+        if candidate_factors.length == 1
+          factors[candidate_factors.first] += 1
+        else
+          candidates.concat candidate_factors
+        end
+      end
+    end
+    
+    expanded = []
+    factors.each do |prime, count|
+      count.times { expanded << prime }
+    end
+    expanded.sort
+  end
+
+  def digits
+    to_s.split("").map { |ch| ch.to_i }
+  end
+
+  @@NAMES = {0=>"",1=>"one",2=>"two",3=>"three",4=>"four",
+           5=>"five",6=>"six",7=>"seven",8=>"eight",9=>"nine",
+           10=>"ten",11=>"eleven",12=>"twelve",13=>"thirteen",14=>"fourteen",
+           15=>"fifteen",16=>"sixteen",17=>"seventeen",18=>"eighteen",19=>"nineteen",
+           20=>"twenty",30=>"thirty",40=>"forty",50=>"fifty",60=>"sixty",
+           70=>"seventy",80=>"eighty",90=>"ninety"
+          }
+  @@SCALES = {100=>"hundred",1000=>"thousand",
+              1E6.to_i=>"million",1E9.to_i=>"billion",1E12.to_i=>"trillion"
+             }
+
+  def to_english(opts={})
+    case
+    when @@NAMES.include?(self) 
+      @@NAMES[self]
+    when self < 100
+      "#{self.round_down_to_multiple_of(10).to_english}-#{(self % 10).to_english}"
+    else
+      translation = ""
+      @@SCALES.sort.reverse.each do |scalar, scalar_english|
+        quotient, remainder = self.divmod scalar
+        next if quotient == 0
+        translation << quotient.to_english << " " << scalar_english 
+        unless remainder == 0
+          translation << " " 
+          translation << "and " if opts[:british] and remainder < 100 # British naming convention: "and" before tens digit
+          translation << remainder.to_english
+        end
+        return translation
+      end
+    end
+  end
+end
+
+# END HELPERS
+# BEGIN FRAMEWORK
+
+class Euler
+  def initialize
+    @JOBS = []
+    @ANSWERS = {}
+    @ACTIVE_PROBLEM = nil
+  end
+
+  def main
+    @JOBS.each do |number, desc, proc|
+      puts desc
+      got = proc.call
+      expected = @ANSWERS[number]
+      if expected.nil? or got == expected
+        puts got
+      else
+        raise "### EXPECTED #{expected} BUT GOT #{got} ###"
+      end
+      puts "*** ANSWER NOT YET COMMITTED TO TEST HARNESS ***" if expected.nil?
+      puts "  (Verified)" if expected and got == expected
+    end
+  end
+
+  def solve(num, desc, &block)
+    return unless ARGV.empty? || ARGV.include?(num.to_s)
+    title = "Project Euler ##{num}:"
+    preamble = <<-EOS
+#{border title.length}
+#{title}
+  #{desc}
+    EOS
+    @JOBS << [num, preamble, block]
+    @ACTIVE_PROBLEM = num
+  end
+
+  def should_be(answer)
+    raise "Attempted to save answer with no problem active." if @ACTIVE_PROBLEM.nil?
+    @ANSWERS[@ACTIVE_PROBLEM] = answer
+    @ACTIVE_PROBLEM = nil
+  end
+
+  alias_method :solutions, :instance_eval
+  alias_method :inputs, :instance_eval
+end
+# END FRAMEWORK
+# BEGIN SOLUTIONS
+
+euler = Euler.new
+euler.solutions do
+  solve 1, "The sum of all the multiples of 3 or 5 below 1000." do
+    (0..999).select { |i| i % 3 == 0 || i % 5 == 0 }.sum
+  end
+  should_be 233168
+
+  solve 2, "The sum of all even-valued Fibonacci sequence terms less than 4 million." do
+    fib = [1,2]
+    loop do
+      term = fib[-2] + fib[-1]
+      break if term > 4000000
+      fib << term
+    end
+    fib.select { |n| n.even? }.sum
+  end
+  should_be 4613732
+
+  solve 3, "The largest prime factor of the number 600851475143." do
+    600851475143.prime_factors.last
+  end
+  should_be 6857
+
+  solve 4, "The largest palindrome made from the product of two 3-digit numbers." do
+    best = nil
+    for a in (100..999)
+      for b in (a..999)
+        product = a*b
+        best = product if product.to_s.palindrome? && (best.nil? or best < product)
+      end
+    end
+    best
+  end
+  should_be 906609
+
+  solve 5, "The smallest positive number that is evenly divisible by all numbers from 1 to 20." do
+    factor_counts = Hash.new(0)
+    (1..20).map do |n|
+      local_counts = Hash.new(0)
+      n.prime_factors.each { |prime| local_counts[prime] += 1 }
+      local_counts.each { |prime, count| factor_counts[prime] = [factor_counts[prime], count].max }
+    end
+    factor_counts.reduce(1) { |prod, (prime, count)| prod *= prime**count }
+  end
+  should_be 232792560
+
+  solve 6, "The difference between (the square of the sum) and (the sum of the squares) of the first hundred natural numbers." do
+    square_of_sum = (1..100).sum ** 2
+    sum_of_squares = (1..100).map { |n| n**2 }.sum
+    square_of_sum - sum_of_squares
+  end
+  should_be 25164150
+
+  solve 7, "The 10001st prime number" do
+    Sieve.new.take(10001).last
+  end
+  should_be 104743
+
+  solve 8, "The greatest product of five consecutive digits in the given 1000-digit number." do
+    all_digits = @INPUT_5.split("").map { |ch| ch.to_i }
+    active_digits = all_digits.slice! 0..4 
+    max_product = active_digits.multiply
+    all_digits.each do |digit|
+      active_digits.shift
+      active_digits << digit
+      max_product = [max_product, active_digits.multiply].max
+    end
+    max_product
+  end
+  should_be 40824
+
+  solve 9, "The one Pythagorean triplet whose sum is 1000." do
+    catch :answer do
+      for a in 1..998
+        for b in 1..(999 - a)
+          c = 1000 - a - b
+          throw :answer, a*b*c if a**2 + b**2 == c**2
+        end
+      end
+    end
+  end
+  should_be 31875000
+
+  solve 10, "The sum of all primes below 2 million." do
+    Sieve.new(2E6.to_i).sum
+  end
+  should_be 142913828922
+
+  solve 13, "The first ten digits of the sum of the given fifty-digit numbers." do
+    @INPUT_13.split.map { |s| s.to_i }.sum.to_s[0..9].to_i
+  end
+  should_be 5537376230
+
+  solve 17, "The number of letters used writing out the numbers 1 to 1000 in words, not counting spaces or hyphens." do
+    (1..1000).map { |n| n.to_english(:british => true) }.join.gsub(/-| /, "").length
+  end
+  should_be 21124
+
+  solve 20, "The sum of the digits in the number 100! (100 factorial)." do
+    100.factorial.digits.sum
+  end
+  should_be 648
+end
+# END SOLUTIONS
+# BEGIN INPUTS
+euler.inputs do
+  @INPUT_5 = <<-FIVE
+73167176531330624919225119674426574742355349194934
+96983520312774506326239578318016984801869478851843
+85861560789112949495459501737958331952853208805511
+12540698747158523863050715693290963295227443043557
+66896648950445244523161731856403098711121722383113
+62229893423380308135336276614282806444486645238749
+30358907296290491560440772390713810515859307960866
+70172427121883998797908792274921901699720888093776
+65727333001053367881220235421809751254540594752243
+52584907711670556013604839586446706324415722155397
+53697817977846174064955149290862569321978468622482
+83972241375657056057490261407972968652414535100474
+82166370484403199890008895243450658541227588666881
+16427171479924442928230863465674813919123162824586
+17866458359124566529476545682848912883142607690042
+24219022671055626321111109370544217506941658960408
+07198403850962455444362981230987879927244284909188
+84580156166097919133875499200524063689912560717606
+05886116467109405077541002256983155200055935729725
+71636269561882670428252483600823257530420752963450
+  FIVE
+
+  @INPUT_13 = <<-THIRTEEN
+37107287533902102798797998220837590246510135740250
+46376937677490009712648124896970078050417018260538
+74324986199524741059474233309513058123726617309629
+91942213363574161572522430563301811072406154908250
+23067588207539346171171980310421047513778063246676
+89261670696623633820136378418383684178734361726757
+28112879812849979408065481931592621691275889832738
+44274228917432520321923589422876796487670272189318
+47451445736001306439091167216856844588711603153276
+70386486105843025439939619828917593665686757934951
+62176457141856560629502157223196586755079324193331
+64906352462741904929101432445813822663347944758178
+92575867718337217661963751590579239728245598838407
+58203565325359399008402633568948830189458628227828
+80181199384826282014278194139940567587151170094390
+35398664372827112653829987240784473053190104293586
+86515506006295864861532075273371959191420517255829
+71693888707715466499115593487603532921714970056938
+54370070576826684624621495650076471787294438377604
+53282654108756828443191190634694037855217779295145
+36123272525000296071075082563815656710885258350721
+45876576172410976447339110607218265236877223636045
+17423706905851860660448207621209813287860733969412
+81142660418086830619328460811191061556940512689692
+51934325451728388641918047049293215058642563049483
+62467221648435076201727918039944693004732956340691
+15732444386908125794514089057706229429197107928209
+55037687525678773091862540744969844508330393682126
+18336384825330154686196124348767681297534375946515
+80386287592878490201521685554828717201219257766954
+78182833757993103614740356856449095527097864797581
+16726320100436897842553539920931837441497806860984
+48403098129077791799088218795327364475675590848030
+87086987551392711854517078544161852424320693150332
+59959406895756536782107074926966537676326235447210
+69793950679652694742597709739166693763042633987085
+41052684708299085211399427365734116182760315001271
+65378607361501080857009149939512557028198746004375
+35829035317434717326932123578154982629742552737307
+94953759765105305946966067683156574377167401875275
+88902802571733229619176668713819931811048770190271
+25267680276078003013678680992525463401061632866526
+36270218540497705585629946580636237993140746255962
+24074486908231174977792365466257246923322810917141
+91430288197103288597806669760892938638285025333403
+34413065578016127815921815005561868836468420090470
+23053081172816430487623791969842487255036638784583
+11487696932154902810424020138335124462181441773470
+63783299490636259666498587618221225225512486764533
+67720186971698544312419572409913959008952310058822
+95548255300263520781532296796249481641953868218774
+76085327132285723110424803456124867697064507995236
+37774242535411291684276865538926205024910326572967
+23701913275725675285653248258265463092207058596522
+29798860272258331913126375147341994889534765745501
+18495701454879288984856827726077713721403798879715
+38298203783031473527721580348144513491373226651381
+34829543829199918180278916522431027392251122869539
+40957953066405232632538044100059654939159879593635
+29746152185502371307642255121183693803580388584903
+41698116222072977186158236678424689157993532961922
+62467957194401269043877107275048102390895523597457
+23189706772547915061505504953922979530901129967519
+86188088225875314529584099251203829009407770775672
+11306739708304724483816533873502340845647058077308
+82959174767140363198008187129011875491310547126581
+97623331044818386269515456334926366572897563400500
+42846280183517070527831839425882145521227251250327
+55121603546981200581762165212827652751691296897789
+32238195734329339946437501907836945765883352399886
+75506164965184775180738168837861091527357929701337
+62177842752192623401942399639168044983993173312731
+32924185707147349566916674687634660915035914677504
+99518671430235219628894890102423325116913619626622
+73267460800591547471830798392868535206946944540724
+76841822524674417161514036427982273348055556214818
+97142617910342598647204516893989422179826088076852
+87783646182799346313767754307809363333018982642090
+10848802521674670883215120185883543223812876952786
+71329612474782464538636993009049310363619763878039
+62184073572399794223406235393808339651327408011116
+66627891981488087797941876876144230030984490851411
+60661826293682836764744779239180335110989069790714
+85786944089552990653640447425576083659976645795096
+66024396409905389607120198219976047599490197230297
+64913982680032973156037120041377903785566085089252
+16730939319872750275468906903707539413042652315011
+94809377245048795150954100921645863754710598436791
+78639167021187492431995700641917969777599028300699
+15368713711936614952811305876380278410754449733078
+40789923115535562561142322423255033685442488917353
+44889911501440648020369068063960672322193204149535
+41503128880339536053299340368006977710650566631954
+81234880673210146739058568557934581403627822703280
+82616570773948327592232845941706525094512325230608
+22918802058777319719839450180888072429661980811197
+77158542502016545090413245809786882778948721859617
+72107838435069186155435662884062257473692284509516
+20849603980134001723930671666823555245252804609722
+53503534226472524250874054075591789781264330331690
+  THIRTEEN
+end
+# END INPUTS
+euler.main
