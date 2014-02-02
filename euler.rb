@@ -6,22 +6,22 @@ def border(len)
   (1..len).map{ "=" }.join
 end
 
-# From http://www.michaelharrison.ws/weblog/?p=163
-class Enumerator 
-  def lazy_select(&block) 
-    Enumerator.new do |yielder| 
-      self.each do |val| 
-        yielder.yield(val) if block.call(val) 
-      end 
-    end 
-  end 
+class Fibonacci < Enumerator
+  def initialize(upper_bound=Inf)
+    @terms = 0
+    super() do |yielder|
+      first, second = 1, 1
+      while first < upper_bound do
+        @terms += 1
+        yielder.yield first
+        second = first + second
+        first = second - first
+      end
+    end
+  end
 
-  def lazy_map(&block) 
-    Enumerator.new do |yielder| 
-      self.each do |value| 
-        yielder.yield(block.call(value)) 
-      end 
-    end 
+  def term_number
+    return @terms
   end
 end
 
@@ -181,6 +181,7 @@ class Euler
   end
 
   def solve(num, desc, &block)
+    @ACTIVE_PROBLEM = num
     return unless ARGV.empty? || ARGV.include?(num.to_s)
     title = "Project Euler ##{num}:"
     preamble = <<-EOS
@@ -189,7 +190,6 @@ class Euler
   #{desc}
     EOS
     @JOBS << [num, preamble, block]
-    @ACTIVE_PROBLEM = num
   end
 
   def should_be(answer)
@@ -212,13 +212,7 @@ euler.solutions do
   should_be 233168
 
   solve 2, "The sum of all even-valued Fibonacci sequence terms less than 4 million." do
-    fib = [1,2]
-    loop do
-      term = fib[-2] + fib[-1]
-      break if term > 4000000
-      fib << term
-    end
-    fib.select { |n| n.even? }.sum
+    Fibonacci.new(4000000).select { |n| n.even? }.sum
   end
   should_be 4613732
 
@@ -306,6 +300,14 @@ euler.solutions do
     100.factorial.digits.sum
   end
   should_be 648
+
+  solve 25, "The number of the first term of the Fibonacci series to have 1000 digits." do
+    fib = (Fibonacci.new)
+    fib.lazy.select { |n| n.to_s.length == 1000 }.first
+    fib.term_number
+  end
+  should_be 4782
+  
 end
 # END SOLUTIONS
 # BEGIN INPUTS
